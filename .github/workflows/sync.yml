@@ -12,7 +12,6 @@ jobs:
   sync_latest_from_upstream:
     name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
-    
 
     steps:
       - name: Checkout target repo
@@ -29,16 +28,16 @@ jobs:
           git remote add upstream https://github.com/cmliu/edgetunnel.git
           git fetch upstream main
 
-          if git diff --quiet HEAD upstream/main; then
-            # 内容和上游一致，直接对齐，顺带清理历史分叉留下的多余 merge commit
-            git reset --hard upstream/main
-            git push --force-with-lease origin main
+          # 本仓库为独立仓库（与上游无共同历史），git pull 会报
+          # refusing to merge unrelated histories，故改用文件覆盖式同步：
+          # 覆盖上游全部文件，仅保留本地专属的 wrangler.toml、.github、_autodeploy_check.md
+          git checkout upstream/main -- . ':(exclude).github' ':(exclude)wrangler.toml'
+
+          if git diff --cached --quiet; then
+            echo "上游无新变化，跳过提交"
           else
-            # 有本地修改，保持原来的合并方式，不覆盖任何人的改动
-            if ! git pull --no-rebase upstream main; then
-              echo "[Error] 合并上游变更产生冲突，自动同步已暂停，请手动 Sync Fork 并解决冲突。"
-              echo "[Error] Merge conflict detected while syncing upstream. Please sync your fork manually and resolve the conflicts."
-              exit 1
-            fi
+            UP_VER=$(grep -m1 -oP "Version = '\K[^']+" _worker.js || echo unknown)
+            git commit -m "Sync upstream: ${UP_VER}"
             git push origin main
+            echo "已同步上游版本: ${UP_VER}"
           fi
